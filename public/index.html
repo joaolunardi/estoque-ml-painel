@@ -117,6 +117,13 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
 .ins .tag.alta{background:var(--g-bg);color:var(--g)} .ins .tag.queda{background:var(--r-bg);color:var(--r)}
 .ins-vazio{padding:18px 16px;color:var(--mut);font-size:13px}
 .ins-nota{color:var(--mut);font-size:12px;margin:10px 4px 0}
+/* navegação por páginas */
+.nav{display:flex;gap:4px;margin-right:8px}
+.nav button{border:0;background:transparent;padding:8px 16px;border-radius:10px;font-weight:600;color:var(--mut);display:flex;align-items:center;gap:8px}
+.nav button:hover{background:var(--soft);color:var(--tx)}
+.nav button.on{background:var(--ac-soft);color:var(--ac)}
+.nav .badge{font-size:11px;font-weight:700;min-width:20px;padding:1px 7px;border-radius:99px;background:var(--ac);color:#fff;text-align:center}
+.nav button:not(.on) .badge{background:var(--gr-bg);color:var(--mut)}
 </style>
 </head>
 <body>
@@ -137,19 +144,19 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
 <div id="app" class="hidden">
   <header>
     <div class="brand"><svg class="logo" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="#2f5bea"/><path d="M64 24 100 44v40L64 104 28 84V44z" fill="#fff"/><path d="M64 24v40m0 0L28 44m36 20 36-20M64 64v40" stroke="#2f5bea" stroke-width="5" fill="none"/></svg><div><h1>Estoque ML</h1><small id="atual"></small></div></div>
+    <nav class="nav">
+      <button class="on" data-page="inicio">Visão geral</button>
+      <button data-page="dicas">Dicas <span class="badge hidden" id="badgeDicas"></span></button>
+    </nav>
     <span id="status" class="chip hidden"></span>
     <button id="btnAtualizar" class="pri">↻ Atualizar agora</button>
     <button id="btnSair" class="hidden">Sair</button>
   </header>
   <main>
     <div id="avisos"></div>
+    <div id="pgInicio">
     <h2 class="sec">Resumo — o que precisa de ação</h2>
     <div class="cards" id="kpis"></div>
-
-    <div id="insightsBox" class="hidden">
-      <h2 class="sec">Dicas da operação</h2>
-      <div id="insights"></div>
-    </div>
 
     <h2 class="sec">Consultar produto</h2>
     <div class="search">
@@ -167,6 +174,12 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
       <div class="sub" id="sub"></div>
     </div>
     <div class="tw"><table id="tabela"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <div id="pgDicas" class="hidden">
+      <h2 class="sec">Dicas da operação</h2>
+      <div id="insights"></div>
+    </div>
   </main>
 </div>
 
@@ -318,11 +331,25 @@ function buscar(q) {
 }
 
 
+// ─── Páginas (Visão geral / Dicas) ─────────────────────────────────────────
+function irPara(p) {
+  $("#pgInicio").classList.toggle("hidden", p !== "inicio");
+  $("#pgDicas").classList.toggle("hidden", p !== "dicas");
+  document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("on", b.dataset.page === p));
+  window.scrollTo({ top: 0 });
+}
+document.addEventListener("click", e => { const b = e.target.closest(".nav button[data-page]"); if (b) irPara(b.dataset.page); });
+
 // ─── Dicas / insights ──────────────────────────────────────────────────────
 function renderInsights() {
-  const I = dados?.insights, box = $("#insightsBox");
-  if (!I) { box.classList.add("hidden"); return; }
-  box.classList.remove("hidden");
+  const I = dados?.insights, badge = $("#badgeDicas");
+  if (!I) {
+    badge.classList.add("hidden");
+    $("#insights").innerHTML = `<div class="ins-sum"><span class="mut">As dicas aparecem aqui depois da próxima atualização dos dados.</span></div>`;
+    return;
+  }
+  const n = (I.totalAlta || 0) + (I.totalQueda || 0);
+  badge.textContent = n; badge.classList.toggle("hidden", n === 0);
   const trend = I.variacaoTotalPct;
   const cor = trend == null || Math.abs(trend) < 5 ? "#667089" : trend > 0 ? "#13885a" : "#d92d44";
   const seta = trend == null || Math.abs(trend) < 5 ? '<path d="M5 12h14"/>' : trend > 0 ? '<path d="m5 15 5-5 4 4 5-6"/><path d="M15 8h4v4"/>' : '<path d="m5 9 5 5 4-4 5 6"/><path d="M15 16h4v-4"/>';
@@ -343,7 +370,7 @@ function renderInsights() {
 }
 document.addEventListener("click", e => {
   const c = e.target.closest(".ins[data-sku]"); if (!c) return;
-  const b = $("#busca"); b.value = c.dataset.sku; buscar(b.value); b.scrollIntoView({ behavior: "smooth", block: "center" });
+  irPara("inicio"); const b = $("#busca"); b.value = c.dataset.sku; buscar(b.value); b.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
 // ─── CSV ───────────────────────────────────────────────────────────────────
