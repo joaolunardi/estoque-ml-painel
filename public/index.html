@@ -99,6 +99,24 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 dialog{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:16px;max-width:520px;width:92%;box-shadow:0 20px 60px rgba(20,30,60,.25)}
 dialog::backdrop{background:rgba(20,30,60,.35)} dialog p{margin:8px 0} dialog menu{display:flex;gap:8px;justify-content:flex-end;padding:0;margin:16px 0 0}
 code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
+/* insights */
+.ins-sum{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:14px 18px;margin-bottom:14px}
+.ins-sum svg{flex:none}
+.ins-cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+.ins-col{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);padding:6px 6px 8px}
+.ins-col h3{margin:0;padding:14px 16px 8px;font-size:14px;display:flex;align-items:center;gap:8px}
+.ins-col h3 .n{margin-left:auto;font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px}
+.ins-col.alta h3 .n{background:var(--g-bg);color:var(--g)} .ins-col.queda h3 .n{background:var(--r-bg);color:var(--r)}
+.ins{display:flex;gap:12px;padding:12px 16px;border-top:1px solid var(--line);cursor:pointer;border-radius:10px;transition:.12s}
+.ins:first-of-type{border-top:0} .ins:hover{background:var(--soft)}
+.ins .thumb{width:42px;height:42px;border-radius:8px}
+.ins b{display:block;font-size:13.5px;line-height:1.35}
+.ins small{display:block;color:var(--mut);margin:1px 0 4px}
+.ins p{margin:0;font-size:13px;color:#39425a}
+.ins .tag{margin-left:auto;align-self:flex-start;font-weight:700;font-size:13px;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.ins .tag.alta{background:var(--g-bg);color:var(--g)} .ins .tag.queda{background:var(--r-bg);color:var(--r)}
+.ins-vazio{padding:18px 16px;color:var(--mut);font-size:13px}
+.ins-nota{color:var(--mut);font-size:12px;margin:10px 4px 0}
 </style>
 </head>
 <body>
@@ -127,6 +145,11 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
     <div id="avisos"></div>
     <h2 class="sec">Resumo — o que precisa de ação</h2>
     <div class="cards" id="kpis"></div>
+
+    <div id="insightsBox" class="hidden">
+      <h2 class="sec">Dicas da operação</h2>
+      <div id="insights"></div>
+    </div>
 
     <h2 class="sec">Consultar produto</h2>
     <div class="search">
@@ -211,6 +234,7 @@ function valorOrd(l, k) {
 // ─── Render ────────────────────────────────────────────────────────────────
 function render() {
   if (!dados) return;
+  renderInsights();
   if (filtro === "sem_dados" && tab === "full") filtro = "critico";
   // resumo: dois painéis (FULL e Compras)
   const painel = (t, titulo, icone, verbo) => {
@@ -292,6 +316,35 @@ function buscar(q) {
           <div><span>Comprar</span><b>${fmt(l.compraSugerida)}</b></div>
         </div></div></div>`).join("") : `<div class="mut">Nenhum produto encontrado para "${esc(q)}".</div>`;
 }
+
+
+// ─── Dicas / insights ──────────────────────────────────────────────────────
+function renderInsights() {
+  const I = dados?.insights, box = $("#insightsBox");
+  if (!I) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  const trend = I.variacaoTotalPct;
+  const cor = trend == null || Math.abs(trend) < 5 ? "#667089" : trend > 0 ? "#13885a" : "#d92d44";
+  const seta = trend == null || Math.abs(trend) < 5 ? '<path d="M5 12h14"/>' : trend > 0 ? '<path d="m5 15 5-5 4 4 5-6"/><path d="M15 8h4v4"/>' : '<path d="m5 9 5 5 4-4 5 6"/><path d="M15 16h4v-4"/>';
+  const item = (x, t) => `<div class="ins" data-sku="${esc(x.sku)}" title="Clique para ver o produto">
+      ${x.imagem ? `<img class="thumb" loading="lazy" src="${esc(x.imagem)}" alt="">` : `<div class="thumb"></div>`}
+      <div style="min-width:0"><b>${esc(x.titulo)}</b><small>${esc(x.produto)} · ${esc(x.sku)}</small><p>${esc(x.dica)}</p></div>
+      <span class="tag ${t}">${x.variacaoPct == null ? "novo" : (x.variacaoPct > 0 ? "+" : "") + x.variacaoPct + "%"}</span></div>`;
+  const col = (t, titulo, lista, total, vazio) => `<div class="ins-col ${t}"><h3>${titulo}<span class="n">${total}</span></h3>
+      ${lista.length ? lista.map(x => item(x, t)).join("") : `<div class="ins-vazio">${vazio}</div>`}
+      ${total > lista.length ? `<div class="ins-vazio">…e mais ${total - lista.length} produtos.</div>` : ""}</div>`;
+  $("#insights").innerHTML = `
+    <div class="ins-sum"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="${cor}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${seta}</svg><span>${esc(I.resumo)}</span></div>
+    <div class="ins-cols">
+      ${col("alta", "Vendendo acima do normal", I.alta || [], I.totalAlta || 0, "Nenhum produto acelerou de forma relevante nesta semana.")}
+      ${col("queda", "Vendas em queda", I.queda || [], I.totalQueda || 0, "Nenhum produto com queda relevante nesta semana.")}
+    </div>
+    <p class="ins-nota">Compara os últimos 7 dias com a média dos 23 dias anteriores. Só considera produtos com volume mínimo de vendas, para evitar alarme falso.</p>`;
+}
+document.addEventListener("click", e => {
+  const c = e.target.closest(".ins[data-sku]"); if (!c) return;
+  const b = $("#busca"); b.value = c.dataset.sku; buscar(b.value); b.scrollIntoView({ behavior: "smooth", block: "center" });
+});
 
 // ─── CSV ───────────────────────────────────────────────────────────────────
 function csv() {
