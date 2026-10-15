@@ -23,4 +23,4 @@ jobs:
       - name: Publicar
         env:
           GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/sa.json
-        run: npx --yes firebase-tools@13 deploy --only hosting,firestore:rules --project estoque-ml-7254e --non-interactive
+        run: npx --yes firebase-tools@13 deploy --only hosting --project estoque-ml-7254e --non-interactive
