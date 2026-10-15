@@ -1,0 +1,14 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function dono() {
+      return request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email == "joaopedrolunardi.fgv@gmail.com";
+    }
+    match /dashboard/{doc} { allow read: if dono(); allow write: if false; }
+    match /control/{doc}   { allow read: if dono(); allow write: if false; }
+    // secrets/* e todo o resto: negado (o job usa conta de serviço, que ignora as regras)
+    match /{document=**} { allow read, write: if false; }
+  }
+}

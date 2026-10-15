@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estoque ML</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<meta name="theme-color" content="#0f1420">
+<style>
+:root{--bg:#0f1420;--card:#171d2d;--card2:#1e2639;--line:#2a3350;--tx:#e8ecf5;--mut:#8b95b0;--ac:#5b8def;
+--r:#ef4b5b;--y:#f2b84b;--g:#34c37a;--gr:#8b95b0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card2);color:var(--tx);padding:7px 12px;border-radius:8px}
+button:hover{border-color:var(--ac)} button:disabled{opacity:.5;cursor:default}
+button.pri{background:var(--ac);border-color:var(--ac);color:#fff}
+input[type=text],input[type=password]{font:inherit;background:var(--card);border:1px solid var(--line);color:var(--tx);padding:9px 12px;border-radius:8px;width:100%}
+input:focus{outline:none;border-color:var(--ac)}
+.hidden{display:none!important}
+#login,#setup{min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px}
+#login h1,#setup h1{margin:0}
+header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+header h1{font-size:17px;margin:0;flex:1;min-width:120px}
+.mut{color:var(--mut)} .chip{padding:3px 10px;border-radius:99px;font-size:12px;border:1px solid var(--line);background:var(--card)}
+.chip.ok{color:var(--g)} .chip.run{color:var(--y)} .chip.err{color:var(--r)}
+main{max-width:1250px;margin:0 auto;padding:16px 18px 60px}
+.aviso{background:#3a2d12;border:1px solid #6b5217;color:#f6dc9a;padding:9px 12px;border-radius:8px;margin-bottom:10px;font-size:13px}
+.aviso.red{background:#3a1519;border-color:#7a2a33;color:#f6b4bb}
+#busca{margin:6px 0 14px}
+#resultados{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:12px;margin-top:12px}
+.sku{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;gap:12px}
+.sku img,.thumb{width:56px;height:56px;object-fit:cover;border-radius:8px;background:var(--card2);flex:none}
+.sku h3{margin:0 0 2px;font-size:14px} .sku .kv{display:grid;grid-template-columns:auto auto;gap:2px 14px;margin-top:6px;font-size:13px}
+.sku .kv span:nth-child(odd){color:var(--mut)}
+.tabs{display:flex;gap:8px;margin:14px 0 10px;flex-wrap:wrap}
+.tab{padding:9px 16px;border-radius:10px}
+.tab.on{background:var(--ac);border-color:var(--ac);color:#fff}
+.sub{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+.sub button.on{border-color:var(--ac);background:#243257}
+.sub .grow{flex:1;min-width:180px}
+.tw{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--card)}
+table{border-collapse:collapse;width:100%;min-width:760px}
+th,td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+td.prod{white-space:normal;min-width:260px}
+th{position:sticky;top:0;background:var(--card2);cursor:pointer;user-select:none;font-size:12px;color:var(--mut);text-transform:uppercase;letter-spacing:.03em}
+th.on{color:var(--tx)} tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right}
+.pill{padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;display:inline-block}
+.pill.critico{background:#4a1b22;color:#ff8d99}.pill.atencao{background:#473713;color:var(--y)}
+.pill.ok{background:#14382a;color:var(--g)}.pill.sem_dados{background:#2a3044;color:var(--gr)}
+.pcell{display:flex;gap:10px;align-items:center}.pcell .thumb{width:38px;height:38px}
+.pcell small{display:block;color:var(--mut)}
+.empty{padding:28px;text-align:center;color:var(--mut)}
+dialog{background:var(--card);color:var(--tx);border:1px solid var(--line);border-radius:12px;max-width:520px;width:92%}
+dialog::backdrop{background:#0009} dialog p{margin:8px 0} dialog menu{display:flex;gap:8px;justify-content:flex-end;padding:0;margin:14px 0 0}
+code{background:var(--card2);padding:1px 5px;border-radius:5px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:6px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;cursor:pointer}
+.kpi b{font-size:24px;display:block}
+</style>
+</head>
+<body>
+
+<div id="setup" class="hidden">
+  <h1>⚙️ Falta configurar</h1>
+  <p class="mut">Preencha o arquivo <code>public/firebase-config.js</code> com os dados do seu projeto Firebase e faça o deploy de novo.<br>Veja o passo a passo no LEIA-ME.</p>
+</div>
+
+<div id="login" class="hidden">
+  <h1>📦 Estoque ML</h1>
+  <p class="mut">Painel de estoque FULL e compras</p>
+  <button class="pri" id="btnLogin">Entrar com Google</button>
+  <div id="loginMsg" class="mut"></div>
+</div>
+
+<div id="app" class="hidden">
+  <header>
+    <h1>📦 Estoque ML</h1>
+    <span id="atual" class="mut"></span>
+    <span id="status" class="chip hidden"></span>
+    <button id="btnAtualizar" class="pri">↻ Atualizar agora</button>
+    <button id="btnSair" class="hidden">Sair</button>
+  </header>
+  <main>
+    <div id="avisos"></div>
+    <div class="cards" id="kpis"></div>
+    <input id="busca" type="text" placeholder="🔎 Consultar SKU (ou parte do nome) e ver a situação do produto…" autocomplete="off">
+    <div id="resultados"></div>
+
+    <div class="tabs">
+      <button class="tab on" data-tab="full">📦 Estoque FULL</button>
+      <button class="tab" data-tab="compras">🛒 Compras</button>
+    </div>
+    <div class="sub" id="sub"></div>
+    <div class="tw"><table id="tabela"><thead></thead><tbody></tbody></table></div>
+  </main>
+</div>
+
+<dialog id="dlgPat">
+  <h3 style="margin-top:0">Botão "Atualizar agora"</h3>
+  <p>Cole um token do GitHub (fine-grained) com permissão <b>Actions: Read and write</b> somente neste repositório. Ele fica salvo apenas neste navegador.</p>
+  <input type="password" id="patInput" placeholder="github_pat_…">
+  <p id="patMsg" class="mut"></p>
+  <menu><button id="patCancel">Cancelar</button><button class="pri" id="patSave">Salvar e atualizar</button></menu>
+</dialog>
+
+<script type="module">
+import { firebaseConfig, DONO_EMAIL, GITHUB } from "./firebase-config.js";
+
+const $ = s => document.querySelector(s);
+const DEMO = new URLSearchParams(location.search).has("demo");
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt = (v, d = 0) => v == null ? "—" : Number(v).toLocaleString("pt-BR", { maximumFractionDigits: d });
+const dias = v => v == null ? "∞" : fmt(v, 1);
+const LBL = {
+  full:    { critico: "🔴 Enviar agora", atencao: "🟡 Atenção", ok: "🟢 OK", sem_dados: "⚪ Sem dados" },
+  compras: { critico: "🔴 Comprar agora", atencao: "🟡 Planejar compra", ok: "🟢 OK", sem_dados: "⚪ Sem dados do Tiny" },
+};
+const pill = (tab, st) => `<span class="pill ${st}">${LBL[tab][st]}</span>`;
+const ms = t => t == null ? null : (typeof t === "number" ? t : (t.toMillis ? t.toMillis() : (t.seconds ? t.seconds * 1000 : null)));
+
+let dados = null, statusDoc = null, tab = "full", filtro = "critico", ordem = { k: null, asc: true }, texto = "";
+
+// ─── Colunas ───────────────────────────────────────────────────────────────
+const COLS = {
+  full: [
+    ["produto", "Produto", "prod"], ["estoqueFull", "FULL", "n"], ["vendaDia30d", "Venda/dia", "n"],
+    ["diasFull", "Dias FULL", "n"], ["envioFull", "Enviar", "n"], ["vendas7d", "7d", "n"], ["vendas30d", "30d", "n"], ["statusFull", "Status", ""],
+  ],
+  compras: [
+    ["produto", "Produto", "prod"], ["estoqueFull", "FULL", "n"], ["estoqueGalpao", "Galpão", "n"], ["estoqueTotal", "Total", "n"],
+    ["vendaDia30d", "Venda/dia", "n"], ["diasTotal", "Dias total", "n"], ["compraSugerida", "Comprar", "n"], ["statusCompra", "Status", ""],
+  ],
+};
+const stKey = () => tab === "full" ? "statusFull" : "statusCompra";
+
+function cel(l, k) {
+  switch (k) {
+    case "produto": return `<div class="pcell">${l.imagem ? `<img class="thumb" loading="lazy" src="${esc(l.imagem)}" alt="">` : `<div class="thumb"></div>`}<div>${esc(l.produto)}<small>${esc(l.sku)}</small></div></div>`;
+    case "diasFull": case "diasTotal": return dias(l[k]);
+    case "vendaDia30d": return fmt(l[k], 2);
+    case "statusFull": return pill("full", l[k]);
+    case "statusCompra": return pill("compras", l[k]);
+    case "envioFull": case "compraSugerida": return l[k] > 0 ? `<b>${fmt(l[k])}</b>` : (l[k] == null ? "—" : "0");
+    default: return fmt(l[k]);
+  }
+}
+function valorOrd(l, k) {
+  const v = l[k];
+  if (k === "diasFull" || k === "diasTotal") return v == null ? Infinity : v;
+  if (k === "produto") return (l.produto || "").toLowerCase();
+  if (k.startsWith("status")) return ["critico", "atencao", "ok", "sem_dados"].indexOf(v);
+  return v == null ? -Infinity : v;
+}
+
+// ─── Render ────────────────────────────────────────────────────────────────
+function render() {
+  if (!dados) return;
+  const res = dados.resumo?.[tab === "full" ? "full" : "compras"] || {};
+  // KPIs
+  const defs = [["critico", tab === "full" ? "Enviar agora" : "Comprar agora"], ["atencao", tab === "full" ? "Atenção" : "Planejar"], ["ok", "OK"]];
+  if (tab === "compras" && res.sem_dados > 0) defs.push(["sem_dados", "Sem dados Tiny"]);
+  $("#kpis").innerHTML = defs.map(([s, n]) => `<div class="kpi" data-f="${s}"><span class="mut">${n}</span><b style="color:var(--${s === "critico" ? "r" : s === "atencao" ? "y" : s === "ok" ? "g" : "gr"})">${res[s] ?? 0}</b></div>`).join("");
+  $("#sub").innerHTML = defs.map(([s]) => `<button data-f="${s}" class="${filtro === s ? "on" : ""}">${LBL[tab][s]} (${res[s] ?? 0})</button>`).join("")
+    + `<input class="grow" id="filtro" type="text" placeholder="Filtrar nesta lista…" value="${esc(texto)}"><button id="csv">⬇ CSV</button>`;
+  if (filtro === "sem_dados" && tab === "full") filtro = "critico";
+
+  const st = stKey(), cols = COLS[tab], t = texto.toLowerCase();
+  let rows = dados.produtos.filter(l => l[st] === filtro && (!t || (l.sku + " " + l.produto).toLowerCase().includes(t)));
+  const k = ordem.k && cols.some(c => c[0] === ordem.k) ? ordem.k : (tab === "full" ? "diasFull" : "diasTotal");
+  const asc = ordem.k ? ordem.asc : true;
+  rows.sort((a, b) => { const x = valorOrd(a, k), y = valorOrd(b, k); return (x < y ? -1 : x > y ? 1 : 0) * (asc ? 1 : -1); });
+
+  $("#tabela thead").innerHTML = "<tr>" + cols.map(([key, nome, cl]) => `<th class="${cl} ${key === k ? "on" : ""}" data-k="${key}">${nome}${key === k ? (asc ? " ▲" : " ▼") : ""}</th>`).join("") + "</tr>";
+  $("#tabela tbody").innerHTML = rows.length
+    ? rows.map(l => "<tr>" + cols.map(([key, , cl]) => `<td class="${cl}">${cel(l, key)}</td>`).join("") + "</tr>").join("")
+    : `<tr><td colspan="${cols.length}" class="empty">Nenhum produto nesta categoria 🎉</td></tr>`;
+  window.__rows = rows; window.__cols = cols;
+}
+
+function renderTopo() {
+  const a = ms(dados?.atualizadoEm);
+  if (a) {
+    const min = Math.max(0, Math.round((Date.now() - a) / 60000));
+    const txt = min < 1 ? "agora" : min < 60 ? `há ${min} min` : min < 1440 ? `há ${Math.floor(min / 60)} h ${min % 60} min` : `há ${Math.floor(min / 1440)} d`;
+    $("#atual").textContent = "Atualizado " + txt + " (" + new Date(a).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) + ")";
+  } else $("#atual").textContent = "Aguardando primeira atualização…";
+  const av = [];
+  if (a && Date.now() - a > 180 * 60000) av.push(`<div class="aviso red">⚠️ Os dados têm mais de 3 horas. A atualização automática pode ter falhado — veja a aba Actions do GitHub ou clique em Atualizar agora.</div>`);
+  (dados?.avisos || []).forEach(x => av.push(`<div class="aviso">⚠️ ${esc(x)}</div>`));
+  if (statusDoc?.estado === "erro") av.push(`<div class="aviso red">❌ A última atualização falhou: ${esc(statusDoc.mensagem || "erro desconhecido")}. Os dados exibidos são da última execução bem-sucedida.</div>`);
+  $("#avisos").innerHTML = av.join("");
+  const chip = $("#status");
+  if (statusDoc?.estado) {
+    chip.classList.remove("hidden", "ok", "run", "err");
+    chip.classList.add(statusDoc.estado === "rodando" ? "run" : statusDoc.estado === "ok" ? "ok" : "err");
+    chip.textContent = statusDoc.estado === "rodando" ? "⏳ Atualizando…" : statusDoc.estado === "ok" ? "✓ OK" : "✕ Erro";
+  }
+}
+setInterval(() => dados && renderTopo(), 30000);
+
+// ─── Busca de SKU ──────────────────────────────────────────────────────────
+function buscar(q) {
+  const box = $("#resultados");
+  q = q.trim().toLowerCase();
+  if (!q || !dados) { box.innerHTML = ""; return; }
+  const P = dados.produtos;
+  let r = P.filter(l => (l.sku || "").toLowerCase() === q);
+  if (!r.length) r = P.filter(l => (l.sku || "").toLowerCase().includes(q));
+  if (!r.length) r = P.filter(l => (l.produto || "").toLowerCase().includes(q));
+  r = r.slice(0, 6);
+  box.innerHTML = r.length ? r.map(l => `
+    <div class="sku">${l.imagem ? `<img src="${esc(l.imagem)}" alt="">` : `<div class="thumb"></div>`}
+      <div style="flex:1;min-width:0"><h3>${esc(l.produto)}</h3><div class="mut">SKU ${esc(l.sku)}</div>
+        <div style="margin:6px 0;display:flex;gap:6px;flex-wrap:wrap">${pill("full", l.statusFull)} ${pill("compras", l.statusCompra)}</div>
+        <div class="kv">
+          <span>Estoque FULL</span><span>${fmt(l.estoqueFull)} ${l.fonteFull === "ml" ? "<small class='mut'>(ML)</small>" : ""}</span>
+          <span>Galpão</span><span>${fmt(l.estoqueGalpao)}</span>
+          <span>Total</span><span>${fmt(l.estoqueTotal)}</span>
+          <span>Venda/dia (30d)</span><span>${fmt(l.vendaDia30d, 2)}</span>
+          <span>Dias de FULL</span><span>${dias(l.diasFull)}</span>
+          <span>Dias totais</span><span>${l.diasTotal == null && l.estoqueTotal == null ? "—" : dias(l.diasTotal)}</span>
+          <span>Enviar ao FULL</span><span><b>${fmt(l.envioFull)}</b></span>
+          <span>Comprar</span><span><b>${fmt(l.compraSugerida)}</b></span>
+        </div></div></div>`).join("") : `<div class="mut">Nenhum produto encontrado para "${esc(q)}".</div>`;
+}
+
+// ─── CSV ───────────────────────────────────────────────────────────────────
+function csv() {
+  const cols = window.__cols, rows = window.__rows;
+  const cab = cols.map(c => c[1]);
+  const lin = rows.map(l => cols.map(([k]) => {
+    let v = k === "produto" ? l.produto + " [" + l.sku + "]" : k.startsWith("status") ? LBL[tab === "full" ? "full" : "compras"][l[k]] : (l[k] ?? "");
+    return `"${String(v).replace(/"/g, '""')}"`;
+  }).join(";"));
+  const blob = new Blob(["﻿" + [cab.join(";"), ...lin].join("\n")], { type: "text/csv;charset=utf-8" });
+  const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(blob), download: `estoque_${tab}_${filtro}.csv` });
+  a.click();
+}
+
+// ─── Eventos de UI ─────────────────────────────────────────────────────────
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-tab],[data-f],[data-k],#csv");
+  if (!t) return;
+  if (t.dataset.tab) { tab = t.dataset.tab; filtro = "critico"; ordem = { k: null, asc: true }; document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b === t)); render(); }
+  else if (t.dataset.f) { filtro = t.dataset.f; render(); }
+  else if (t.dataset.k) { ordem = { k: t.dataset.k, asc: ordem.k === t.dataset.k ? !ordem.asc : true }; render(); }
+  else if (t.id === "csv") csv();
+});
+document.addEventListener("input", e => {
+  if (e.target.id === "filtro") { texto = e.target.value; const p = e.target.selectionStart; render(); const f = $("#filtro"); f.focus(); f.setSelectionRange(p, p); }
+  if (e.target.id === "busca") buscar(e.target.value);
+});
+
+// ─── Atualizar agora (GitHub Actions) ──────────────────────────────────────
+const lsGet = k => { try { return localStorage.getItem(k); } catch { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+async function disparar() {
+  const pat = lsGet("ghpat");
+  if (!pat) { $("#patMsg").textContent = ""; $("#dlgPat").showModal(); return; }
+  const b = $("#btnAtualizar"); b.disabled = true; b.textContent = "Disparando…";
+  try {
+    const r = await fetch(`https://api.github.com/repos/${GITHUB.owner}/${GITHUB.repo}/actions/workflows/${GITHUB.workflow}/dispatches`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${pat}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" },
+      body: JSON.stringify({ ref: GITHUB.branch }),
+    });
+    if (r.status === 204) { b.textContent = "✓ Disparado — leva ~5 min"; setTimeout(() => { b.textContent = "↻ Atualizar agora"; b.disabled = false; }, 8000); return; }
+    const msgs = { 401: "Token inválido ou expirado.", 403: "Token sem permissão (precisa de Actions: Read and write neste repositório).", 404: "Repositório ou workflow não encontrado — confira firebase-config.js e o token.", 422: "O branch/workflow não existe (confira GITHUB.branch e se o arquivo atualizar.yml está no repositório)." };
+    if (r.status === 401 || r.status === 403 || r.status === 404) { try { localStorage.removeItem("ghpat"); } catch {} }
+    alert("Não foi possível disparar: " + (msgs[r.status] || "erro " + r.status));
+  } catch (err) { alert("Falha de rede ao chamar o GitHub: " + err.message); }
+  b.textContent = "↻ Atualizar agora"; b.disabled = false;
+}
+$("#btnAtualizar").onclick = () => DEMO ? alert("Modo demonstração — sem atualização real.") : disparar();
+$("#patCancel").onclick = () => $("#dlgPat").close();
+$("#patSave").onclick = () => {
+  const v = $("#patInput").value.trim();
+  if (!v) { $("#patMsg").textContent = "Cole o token."; return; }
+  lsSet("ghpat", v); $("#patInput").value = ""; $("#dlgPat").close(); disparar();
+};
+
+// ─── Inicialização ─────────────────────────────────────────────────────────
+function mostrarApp() { $("#login").classList.add("hidden"); $("#setup").classList.add("hidden"); $("#app").classList.remove("hidden"); }
+
+async function iniciarDemo() {
+  const j = await (await fetch("demo/dados.json")).json();
+  dados = j.dashboard; dados.atualizadoEm = Date.now() - 12 * 60000; statusDoc = { estado: "ok" };
+  mostrarApp(); renderTopo(); render();
+}
+
+async function iniciarFirebase() {
+  if (String(firebaseConfig.apiKey).startsWith("COLE")) { $("#setup").classList.remove("hidden"); return; }
+  const V = "10.14.1", base = `https://www.gstatic.com/firebasejs/${V}/`;
+  const [{ initializeApp }, A, F] = await Promise.all([
+    import(base + "firebase-app.js"), import(base + "firebase-auth.js"), import(base + "firebase-firestore.js"),
+  ]);
+  const app = initializeApp(firebaseConfig), auth = A.getAuth(app), db = F.getFirestore(app);
+  const provider = new A.GoogleAuthProvider();
+  let unsubs = [];
+
+  $("#btnLogin").onclick = async () => {
+    $("#loginMsg").textContent = "";
+    try { await A.signInWithPopup(auth, provider); }
+    catch (e) {
+      if (e.code === "auth/popup-blocked") return A.signInWithRedirect(auth, provider);
+      $("#loginMsg").textContent = "Não foi possível entrar: " + (e.code || e.message);
+    }
+  };
+  $("#btnSair").onclick = () => A.signOut(auth);
+  $("#btnSair").classList.remove("hidden");
+
+  A.onAuthStateChanged(auth, user => {
+    unsubs.forEach(u => u()); unsubs = [];
+    if (!user) { $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); return; }
+    if ((user.email || "").toLowerCase() !== DONO_EMAIL.toLowerCase()) {
+      $("#app").classList.add("hidden"); $("#login").classList.remove("hidden");
+      $("#loginMsg").textContent = `${user.email} não tem acesso a este painel.`; A.signOut(auth); return;
+    }
+    mostrarApp();
+    unsubs.push(F.onSnapshot(F.doc(db, "dashboard", "latest"), s => {
+      dados = s.exists() ? s.data() : null;
+      if (dados) { renderTopo(); render(); buscar($("#busca").value); } else $("#atual").textContent = "Sem dados ainda — clique em Atualizar agora.";
+    }, err => { $("#avisos").innerHTML = `<div class="aviso red">Erro ao ler dados: ${esc(err.code || err.message)}</div>`; }));
+    unsubs.push(F.onSnapshot(F.doc(db, "control", "status"), s => { statusDoc = s.exists() ? s.data() : null; if (dados) renderTopo(); }));
+  });
+}
+
+(DEMO ? iniciarDemo() : iniciarFirebase()).catch(e => { document.body.insertAdjacentHTML("afterbegin", `<div class="aviso red">Erro ao iniciar: ${esc(e.message)}</div>`); });
+</script>
+</body>
+</html>
