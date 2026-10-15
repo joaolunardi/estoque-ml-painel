@@ -337,7 +337,99 @@ def calcular(produtos, v7, v30, venda_dia_envio, tiny, cfg):
         "diasCoberturaEnvioFull": cobertura_envio, "diasLeadCompra": cfg["DIAS_LEAD_COMPRA"],
         "diasCoberturaMinimaTotal": meta, "prazoFull": prazo_full, "prazoCompra": prazo_compra,
     }
-    return {"produtos": linhas, "resumo": {"full": contar("statusFull"), "compras": contar("statusCompra")}, "config": config}
+    return {"produtos": linhas, "resumo": {"full": contar("statusFull"), "compras": contar("statusCompra")}, "config": config,
+            "insights": gerar_insights(linhas, cfg)}
+
+
+# ─── Insights (dicas automáticas) ────────────────────────────────────────────
+INS_MIN_VENDAS_7D_ALTA = 5      # volume mínimo nos últimos 7d pra considerar "acima do normal"
+INS_RAZAO_ALTA = 1.5            # ritmo recente / ritmo anterior
+INS_MIN_VENDAS_ANT_QUEDA = 8    # volume mínimo nos 23d anteriores pra considerar "queda"
+INS_RAZAO_QUEDA = 0.5
+INS_MAX_POR_TIPO = 8
+
+
+def _un(n):
+    return f"{int(round(n)):,}".replace(",", ".")
+
+
+def _dias(c):
+    return "mais de 1 ano" if c > 365 else f"~{_un(c)} dias"
+
+
+def gerar_insights(linhas, cfg):
+    """Compara o ritmo dos últimos 7 dias com o dos 23 dias anteriores (30d - 7d)."""
+    lead = cfg["DIAS_LEAD_COMPRA"]
+    meta = cfg["DIAS_COBERTURA_MINIMA_TOTAL"]
+    altas, quedas = [], []
+    tot7 = tot_ant = 0
+    for l in linhas:
+        v7, v30 = l["vendas7d"], l["vendas30d"]
+        ant = max(v30 - v7, 0)                 # vendas nos 23 dias anteriores
+        sem_ant = ant / 23 * 7                 # média semanal anterior
+        tot7 += v7
+        tot_ant += sem_ant
+        vd_rec = v7 / 7
+        vd_ant = ant / 23
+        cobertura = None                        # dias que o estoque total dura no ritmo recente
+        base_estoque = l["estoqueTotal"] if l["estoqueTotal"] is not None else l["estoqueFull"]
+        if vd_rec > 0:
+            cobertura = base_estoque / vd_rec
+        item = {
+            "id": l["id"], "sku": l["sku"], "produto": l["produto"], "imagem": l["imagem"],
+            "vendas7d": v7, "mediaSemanalAnterior": round(sem_ant, 1),
+            "estoque": base_estoque, "estoqueTotalConhecido": l["estoqueTotal"] is not None,
+        }
+        # ── vendendo acima do normal ──
+        if v7 >= INS_MIN_VENDAS_7D_ALTA and (vd_ant == 0 or vd_rec / vd_ant >= INS_RAZAO_ALTA):
+            if vd_ant == 0:
+                var, titulo = None, f"Começou a vender: {_un(v7)} un. nos últimos 7 dias (quase nada antes)"
+            else:
+                var = round((vd_rec / vd_ant - 1) * 100)
+                titulo = f"Vendendo {var}% acima do normal: {_un(v7)} un. em 7 dias vs. ~{_un(sem_ant)} por semana antes"
+            partes = [f"No ritmo atual o estoque{'' if item['estoqueTotalConhecido'] else ' do FULL'} dura ~{_un(cobertura)} dias."]
+            if cobertura is not None and cobertura <= lead + cfg["ESTOQUE_SEGURANCA"]:
+                partes.append(f"Isso é menos que o prazo de reposição ({lead} dias + margem): vale comprar já.")
+            elif cobertura is not None and cobertura < meta:
+                partes.append(f"Fica abaixo da sua meta de {meta} dias: considere antecipar a compra.")
+            else:
+                partes.append("Ainda há folga, mas acompanhe se a alta se sustenta antes de aumentar o pedido.")
+            if l["envioFull"] and l["envioFull"] > 0:
+                partes.append(f"Envio sugerido ao FULL: {_un(l['envioFull'])} un.")
+            item.update({"tipo": "alta", "variacaoPct": var, "titulo": titulo, "dica": " ".join(partes),
+                         "impacto": round(vd_rec - vd_ant, 3), "coberturaDias": None if cobertura is None else round(cobertura, 1)})
+            altas.append(item)
+        # ── vendas em queda ──
+        elif ant >= INS_MIN_VENDAS_ANT_QUEDA and vd_ant > 0 and vd_rec / vd_ant <= INS_RAZAO_QUEDA:
+            var = round((vd_rec / vd_ant - 1) * 100)   # negativo
+            titulo = f"Vendas caíram {abs(var)}%: {_un(v7)} un. em 7 dias vs. ~{_un(sem_ant)} por semana antes"
+            partes = []
+            if base_estoque and vd_rec > 0:
+                partes.append(f"No ritmo atual o estoque{'' if item['estoqueTotalConhecido'] else ' do FULL'} dura {_dias(cobertura)}.")
+            elif base_estoque:
+                partes.append(f"Sem vendas na última semana e {_un(base_estoque)} un. em estoque.")
+            if l["compraSugerida"] and l["compraSugerida"] > 0:
+                partes.append(f"O sistema sugere comprar {_un(l['compraSugerida'])} un., mas com a queda vale segurar e reavaliar.")
+            else:
+                partes.append("Evite novas compras por enquanto e veja se é sazonal, preço ou concorrência.")
+            item.update({"tipo": "queda", "variacaoPct": var, "titulo": titulo, "dica": " ".join(partes),
+                         "impacto": round(vd_ant - vd_rec, 3), "coberturaDias": None if cobertura is None else round(cobertura, 1)})
+            quedas.append(item)
+    altas.sort(key=lambda x: -x["impacto"])
+    quedas.sort(key=lambda x: -x["impacto"])
+    var_total = None if tot_ant <= 0 else round((tot7 / tot_ant - 1) * 100)
+    if var_total is None:
+        resumo = f"Vendas nos últimos 7 dias: {_un(tot7)} un."
+    elif abs(var_total) < 5:
+        resumo = f"Vendas nos últimos 7 dias: {_un(tot7)} un., em linha com a média das semanas anteriores."
+    else:
+        resumo = (f"Vendas nos últimos 7 dias: {_un(tot7)} un., {abs(var_total)}% "
+                  f"{'acima' if var_total > 0 else 'abaixo'} da média semanal anterior (~{_un(tot_ant)} un.).")
+    return {
+        "resumo": resumo, "variacaoTotalPct": var_total,
+        "totalAlta": len(altas), "totalQueda": len(quedas),
+        "alta": altas[:INS_MAX_POR_TIPO], "queda": quedas[:INS_MAX_POR_TIPO],
+    }
 
 
 # ─── Execução ────────────────────────────────────────────────────────────────
