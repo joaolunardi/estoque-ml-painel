@@ -117,6 +117,22 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
 .ins .tag.alta{background:var(--g-bg);color:var(--g)} .ins .tag.queda{background:var(--r-bg);color:var(--r)}
 .ins-vazio{padding:18px 16px;color:var(--mut);font-size:13px}
 .ins-nota{color:var(--mut);font-size:12px;margin:10px 4px 0}
+/* anúncios */
+.an-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.an-card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:14px 18px;cursor:pointer}
+.an-card b{display:block;font-size:26px} .an-card span{color:var(--mut);font-size:13px}
+.an-card.perdeu b{color:var(--r)} .an-card.acabando b{color:#b7791f} .an-card.ok b{color:var(--g)}
+.an-card.on{outline:2px solid var(--ac)}
+.an-row{display:flex;gap:12px;align-items:center;padding:11px 16px;border-top:1px solid var(--line)}
+.an-row:first-child{border-top:0} .an-row .thumb{width:42px;height:42px;border-radius:8px;flex:none}
+.an-row .t{min-width:0;flex:1} .an-row b{display:block;font-size:13.5px;line-height:1.35}
+.an-row small{color:var(--mut)} .an-row .p{text-align:right;white-space:nowrap;font-size:13px}
+.an-row .p s{color:var(--mut)} .ins-nota a,.an-row a{color:var(--ac);text-decoration:none;font-weight:600;font-size:12px}
+.an-tag{font-weight:700;font-size:12px;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.an-tag.perdeu{background:var(--r-bg);color:var(--r)} .an-tag.acabando{background:#fdf3dc;color:#b7791f}
+.an-tag.ok{background:var(--g-bg);color:var(--g)} .an-tag.sem{background:var(--gr-bg);color:var(--mut)}
+.an-box{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);margin-bottom:18px;overflow:hidden}
+.an-box h3{margin:0;padding:14px 16px 8px;font-size:14px}
 /* navegação por páginas */
 .nav{display:flex;gap:4px;margin-right:8px}
 .nav button{border:0;background:transparent;padding:8px 16px;border-radius:10px;font-weight:600;color:var(--mut);display:flex;align-items:center;gap:8px}
@@ -146,6 +162,7 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
     <div class="brand"><svg class="logo" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="#2f5bea"/><path d="M64 24 100 44v40L64 104 28 84V44z" fill="#fff"/><path d="M64 24v40m0 0L28 44m36 20 36-20M64 64v40" stroke="#2f5bea" stroke-width="5" fill="none"/></svg><div><h1>Estoque ML</h1><small id="atual"></small></div></div>
     <nav class="nav">
       <button class="on" data-page="inicio">Visão geral</button>
+      <button data-page="anuncios">Anúncios <span class="badge hidden" id="badgeAnuncios"></span></button>
       <button data-page="dicas">Dicas <span class="badge hidden" id="badgeDicas"></span></button>
     </nav>
     <span id="status" class="chip hidden"></span>
@@ -174,6 +191,11 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
       <div class="sub" id="sub"></div>
     </div>
     <div class="tw"><table id="tabela"><thead></thead><tbody></tbody></table></div>
+    </div>
+
+    <div id="pgAnuncios" class="hidden">
+      <h2 class="sec">Guardião de promoção</h2>
+      <div id="anuncios"></div>
     </div>
 
     <div id="pgDicas" class="hidden">
@@ -335,10 +357,58 @@ function buscar(q) {
 function irPara(p) {
   $("#pgInicio").classList.toggle("hidden", p !== "inicio");
   $("#pgDicas").classList.toggle("hidden", p !== "dicas");
+  $("#pgAnuncios").classList.toggle("hidden", p !== "anuncios");
   document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("on", b.dataset.page === p));
   window.scrollTo({ top: 0 });
 }
 document.addEventListener("click", e => { const b = e.target.closest(".nav button[data-page]"); if (b) irPara(b.dataset.page); });
+
+// ─── Anúncios / guardião de promoção ───────────────────────────────────────
+let anunciosDoc = null, filtroAn = "alerta";
+const brl = v => v == null ? "—" : "R$ " + Number(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const dataBR = iso => { const d = new Date(iso); return isNaN(d) ? "—" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }); };
+function anRow(a) {
+  let tag = "", nota = "";
+  if (a.status === "perdeu") { tag = `<span class="an-tag perdeu">Sem promoção</span>`; nota = `Perdeu a promoção${a.perdeuEm ? " em " + dataBR(a.perdeuEm) : ""} · preço atual ${brl(a.preco)}`; }
+  else if (a.status === "acabando") {
+    const d = Math.max(0, Math.ceil(a.diasParaFim));
+    tag = `<span class="an-tag acabando">${d <= 0 ? "Acaba hoje" : d === 1 ? "Acaba amanhã" : "Acaba em " + d + " dias"}</span>`; nota = `Promoção termina em ${dataBR(a.fimPromo)} · ${a.descontoPct}% de desconto`;
+  } else if (a.status === "ok") { tag = `<span class="an-tag ok">Em promoção</span>`; nota = `${a.descontoPct}% de desconto` + (a.fimPromo ? ` · até ${dataBR(a.fimPromo)}` : " · sem data de fim"); }
+  else { tag = `<span class="an-tag sem">Sem promoção</span>`; nota = "Nunca vimos promoção neste anúncio"; }
+  const preco = a.promo ? `<s>${brl(a.precoDe)}</s> <b style="display:inline">${brl(a.preco)}</b>` : `<b style="display:inline">${brl(a.preco)}</b>`;
+  return `<div class="an-row">
+    ${a.imagem ? `<img class="thumb" loading="lazy" src="${esc(a.imagem)}" alt="">` : `<div class="thumb"></div>`}
+    <div class="t"><b>${esc(a.titulo)}</b><small>${esc(a.sku)}${a.full ? " · FULL" : ""} · ${esc(nota)}</small></div>
+    <div class="p">${preco}<br>${a.link ? `<a href="${esc(a.link)}" target="_blank" rel="noopener">Abrir anúncio ↗</a>` : ""}</div>${tag}</div>`;
+}
+function renderAnuncios() {
+  const D = anunciosDoc, badge = $("#badgeAnuncios");
+  if (!D) {
+    badge.classList.add("hidden");
+    $("#anuncios").innerHTML = `<div class="ins-sum"><span class="mut">Os anúncios aparecem aqui depois da próxima atualização dos dados.</span></div>`; return;
+  }
+  const L = D.anuncios || [], r = D.resumo || {};
+  const n = (r.perdeu || 0) + (r.acabando || 0);
+  badge.textContent = n; badge.classList.toggle("hidden", n === 0);
+  const card = (k, cls, num, txt) => `<div class="an-card ${cls} ${filtroAn === k ? "on" : ""}" data-fan="${k}"><b>${num || 0}</b><span>${txt}</span></div>`;
+  const alertas = L.filter(a => a.status === "perdeu" || a.status === "acabando");
+  const lista = filtroAn === "alerta" ? alertas : L.filter(a => a.status === filtroAn || filtroAn === "todos");
+  const titulo = { alerta: "Precisam de atenção", perdeu: "Perderam a promoção", acabando: "Promoção acabando", ok: "Em promoção", sem: "Sem promoção (nunca vista)", todos: "Todos os anúncios ativos" }[filtroAn];
+  $("#anuncios").innerHTML = `
+    <div class="an-cards">
+      ${card("perdeu", "perdeu", r.perdeu, "perderam a promoção")}
+      ${card("acabando", "acabando", r.acabando, "promoção acabando")}
+      ${card("ok", "ok", r.ok, "em promoção")}
+      ${card("sem", "sem", r.sem, "sem promoção (nunca vista)")}
+    </div>
+    <div class="an-box"><h3>${titulo} · ${lista.length}${filtroAn !== "alerta" ? ` <a href="#" data-fan="alerta" style="font-weight:600;font-size:12px;margin-left:8px">← ver só alertas</a>` : ""}</h3>
+      ${lista.length ? lista.map(anRow).join("") : `<div class="ins-vazio">${filtroAn === "alerta" ? "Tudo certo: nenhum anúncio perdeu ou está perto de perder a promoção. 🎉".replace(" 🎉", "") : "Nenhum anúncio nesta categoria."}</div>`}</div>
+    <p class="ins-nota">Considera “em promoção” o anúncio com preço riscado maior que o preço atual. O alerta vermelho só aparece para anúncios que já foram vistos com promoção; o app só mostra a situação, nunca altera preço ou promoção. <a href="#" data-fan="todos">Ver todos os ${r.total || L.length} anúncios</a></p>`;
+}
+document.addEventListener("click", e => {
+  const c = e.target.closest("[data-fan]"); if (!c) return; e.preventDefault();
+  filtroAn = c.dataset.fan; renderAnuncios();
+});
 
 // ─── Dicas / insights ──────────────────────────────────────────────────────
 function renderInsights() {
@@ -435,6 +505,7 @@ function mostrarApp() { $("#login").classList.add("hidden"); $("#setup").classLi
 async function iniciarDemo() {
   const j = await (await fetch("demo/dados.json")).json();
   dados = j.dashboard; dados.atualizadoEm = Date.now() - 12 * 60000; statusDoc = { estado: "ok" };
+  anunciosDoc = j.anuncios || null; renderAnuncios();
   mostrarApp(); renderTopo(); render();
 }
 
@@ -471,6 +542,7 @@ async function iniciarFirebase() {
       dados = s.exists() ? s.data() : null;
       if (dados) { renderTopo(); render(); buscar($("#busca").value); } else $("#atual").textContent = "Sem dados ainda — clique em Atualizar agora.";
     }, err => { $("#avisos").innerHTML = `<div class="aviso red">Erro ao ler dados: ${esc(err.code || err.message)}</div>`; }));
+    unsubs.push(F.onSnapshot(F.doc(db, "dashboard", "anuncios"), s => { anunciosDoc = s.exists() ? s.data() : null; renderAnuncios(); }, () => {}));
     unsubs.push(F.onSnapshot(F.doc(db, "control", "status"), s => { statusDoc = s.exists() ? s.data() : null; if (dados) renderTopo(); }));
   });
 }
