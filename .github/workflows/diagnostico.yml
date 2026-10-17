@@ -1,0 +1,25 @@
+name: Diagnóstico de anúncios
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: job/requirements.txt
+      - run: pip install -r job/requirements.txt
+      - run: python diagnostico.py
+        working-directory: job
+        env:
+          ML_APP_ID: ${{ secrets.ML_APP_ID }}
+          ML_SECRET_KEY: ${{ secrets.ML_SECRET_KEY }}
+          ML_USER_ID: ${{ secrets.ML_USER_ID }}
+          ML_REFRESH_TOKEN: ${{ secrets.ML_REFRESH_TOKEN }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
