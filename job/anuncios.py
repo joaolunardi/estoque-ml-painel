@@ -48,6 +48,31 @@ def buscar_anuncios_ativos(headers, user_id):
     return anuncios
 
 
+def preco_vigente(headers, item_id):
+    """(preço atual, preço 'de') pelo endpoint de preço de venda — o campo original_price
+    da listagem não reflete a promoção em vários anúncios (catálogo / user product)."""
+    try:
+        r = ml_get(f"{API}/items/{item_id}/sale_price", headers)
+    except Exception:
+        return None, None
+    if not isinstance(r, dict) or r.get("amount") is None:
+        return None, None
+    return r.get("amount"), r.get("regular_amount")
+
+
+def aplicar_preco_vigente(headers, anuncios):
+    """Corrige preco/precoDe de cada anúncio com o preço de venda vigente."""
+    for a in anuncios.values():
+        amount, regular = preco_vigente(headers, a["id"])
+        if amount is None:
+            continue
+        a["preco"] = amount
+        if regular and regular > amount:
+            a["precoDe"] = regular
+        elif not (a.get("precoDe") and a["precoDe"] > amount):
+            a["precoDe"] = None
+
+
 def fim_da_promocao(headers, item_id):
     """Data de fim (ISO UTC) da promoção vigente, se o ML informar; senão None."""
     try:
@@ -116,6 +141,7 @@ def executar_anuncios(db, firestore, headers, user_id, cfg):
     anuncios = buscar_anuncios_ativos(headers, user_id)
     if not anuncios:
         raise RuntimeError("Nenhum anúncio ativo devolvido — mantive os dados anteriores.")
+    aplicar_preco_vigente(headers, anuncios)
     fins = {i: fim_da_promocao(headers, i) for i, a in anuncios.items() if tem_promocao(a)}
     ref = db.collection("state").document("anuncios")
     snap = ref.get()
