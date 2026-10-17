@@ -487,6 +487,11 @@ def executar(db, firestore):
     db.collection("dashboard").document("latest").set(payload)
     db.collection("control").document("status").set(
         {"estado": "ok", "concluidoEm": firestore.SERVER_TIMESTAMP, "mensagem": f"{len(resultado['produtos'])} produtos atualizados"})
+    try:
+        from anuncios import executar_anuncios
+        executar_anuncios(db, firestore, headers, user_id, cfg)
+    except Exception as e:  # o guardião nunca derruba a atualização de estoque
+        log(f"⚠️ Guardião de anúncios falhou: {e}")
     log(f"✅ Pronto em {round(time.time() - inicio)}s · FULL {resultado['resumo']['full']} · Compras {resultado['resumo']['compras']}")
 
 
