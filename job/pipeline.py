@@ -64,6 +64,26 @@ def ml_get(url, headers, tentativas=4):
     raise RuntimeError(f"Mercado Livre não respondeu ({ultimo}): {url[:90]}")
 
 
+def buscar_itens(headers, ids):
+    """Multiget de anúncios resistente a erro: se o ML devolver uma mensagem de erro em vez
+    da lista, tenta de novo e, se continuar, busca um a um (pulando os que falharem)."""
+    base = "https://api.mercadolibre.com/items"
+    for t in range(1, 4):
+        r = ml_get(f"{base}?ids={','.join(ids)}", headers)
+        if isinstance(r, list):
+            return [x for x in r if isinstance(x, dict)]
+        log(f"⚠️ /items devolveu erro ({str(r)[:150]}) — tentativa {t}/3")
+        time.sleep(2 * t)
+    saida = []
+    for i in ids:
+        r = ml_get(f"{base}/{i}", headers)
+        if isinstance(r, dict) and r.get("id"):
+            saida.append({"code": 200, "body": r})
+        else:
+            log(f"⚠️ Anúncio {i} ignorado: {str(r)[:120]}")
+    return saida
+
+
 def renovar_token_ml(db, firestore):
     """O ML invalida o refresh token a cada uso e devolve um novo, então o último
     fica guardado em secrets/ml. Se ele falhar, tenta o inicial dos Secrets."""
@@ -107,9 +127,11 @@ def buscar_produtos_full(headers, user_id):
             if not ids:
                 break
             for i in range(0, len(ids), 20):
-                itens = ml_get(f"https://api.mercadolibre.com/items?ids={','.join(ids[i:i + 20])}", headers)
+                itens = buscar_itens(headers, ids[i:i + 20])
                 for item in itens:
-                    p = item.get("body", {})
+                    p = item.get("body") or {}
+                    if not p.get("id"):
+                        continue
                     if p.get("shipping", {}).get("logistic_type", "") != "fulfillment":
                         continue
                     sku = next((a.get("value_name") for a in p.get("attributes", []) if a.get("id") == "SELLER_SKU"), None) or "Sem SKU"

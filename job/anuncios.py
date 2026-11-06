@@ -8,7 +8,7 @@ tem promoção com data de fim próxima.
 """
 from datetime import datetime, timezone
 
-from pipeline import log, ml_get, _num
+from pipeline import log, ml_get, buscar_itens
 
 API = "https://api.mercadolibre.com"
 
@@ -31,7 +31,7 @@ def buscar_anuncios_ativos(headers, user_id):
             break
     anuncios = {}
     for i in range(0, len(ids), 20):
-        for it in ml_get(f"{API}/items?ids={','.join(ids[i:i + 20])}", headers):
+        for it in buscar_itens(headers, ids[i:i + 20]):
             p = it.get("body") or {}
             if it.get("code") != 200 or not p.get("id"):
                 continue
