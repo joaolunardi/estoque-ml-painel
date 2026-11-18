@@ -133,6 +133,25 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
 .an-tag.ok{background:var(--g-bg);color:var(--g)} .an-tag.sem{background:var(--gr-bg);color:var(--mut)}
 .an-box{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--sh);margin-bottom:18px;overflow:hidden}
 .an-box h3{margin:0;padding:14px 16px 8px;font-size:14px}
+/* produtos */
+.pd-top{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
+.pd-cfg{display:flex;gap:16px;margin-left:auto;color:var(--mut);font-size:13px}
+.pd-cfg label{display:flex;align-items:center;gap:6px}
+.pd-cfg input{width:64px!important;padding:6px 8px!important;text-align:right}
+.pd-tools{display:flex;gap:8px;align-items:center;margin-left:auto;flex-wrap:wrap}
+.pd-tools input[type=text]{width:260px;padding:8px 12px}
+select{font:inherit;background:var(--card);border:1px solid var(--line);color:var(--tx);padding:8px 10px;border-radius:10px}
+table.pd{min-width:1040px}
+table.pd th{cursor:default;white-space:normal;line-height:1.25;padding:10px 8px}
+table.pd td{padding:8px 8px;vertical-align:middle}
+table.pd td small{display:block;color:var(--mut);font-size:12px}
+table.pd td.prod b{font-size:13.5px;line-height:1.35}
+input.ed{font:inherit;text-align:right;border:1px solid transparent;background:var(--soft);border-radius:8px;padding:6px 8px;font-variant-numeric:tabular-nums;transition:.12s}
+input.ed:hover{border-color:var(--line)} input.ed:focus{outline:none;border-color:var(--ac);background:#fff;box-shadow:0 0 0 3px var(--ac-soft)}
+input.ed.salvo{border-color:#2fb982;background:var(--g-bg)} input.ed.erro{border-color:var(--r);background:var(--r-bg)}
+input.ed::-webkit-outer-spin-button,input.ed::-webkit-inner-spin-button{-webkit-appearance:none;margin:0} input.ed{-moz-appearance:textfield}
+.tag-ml{color:var(--ac);font-weight:600} .difml{color:var(--y)!important;font-weight:600}
+table.pd small a{color:var(--ac);text-decoration:none}
 /* navegação por páginas */
 .nav{display:flex;gap:4px;margin-right:8px}
 .nav button{border:0;background:transparent;padding:8px 16px;border-radius:10px;font-weight:600;color:var(--mut);display:flex;align-items:center;gap:8px}
@@ -162,6 +181,7 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
     <div class="brand"><svg class="logo" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="#2f5bea"/><path d="M64 24 100 44v40L64 104 28 84V44z" fill="#fff"/><path d="M64 24v40m0 0L28 44m36 20 36-20M64 64v40" stroke="#2f5bea" stroke-width="5" fill="none"/></svg><div><h1>Estoque ML</h1><small id="atual"></small></div></div>
     <nav class="nav">
       <button class="on" data-page="inicio">Visão geral</button>
+      <button data-page="produtos">Produtos</button>
       <button data-page="anuncios">Anúncios <span class="badge hidden" id="badgeAnuncios"></span></button>
       <button data-page="dicas">Dicas <span class="badge hidden" id="badgeDicas"></span></button>
     </nav>
@@ -193,6 +213,11 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
     <div class="tw"><table id="tabela"><thead></thead><tbody></tbody></table></div>
     </div>
 
+    <div id="pgProdutos" class="hidden">
+      <h2 class="sec">Produtos e margem</h2>
+      <div id="produtos"></div>
+    </div>
+
     <div id="pgAnuncios" class="hidden">
       <h2 class="sec">Guardião de promoção</h2>
       <div id="anuncios"></div>
@@ -205,6 +230,15 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
   </main>
 </div>
 
+<dialog id="dlgImport">
+  <h3 style="margin-top:0">Importar planilha de produtos</h3>
+  <p class="mut">Escolha sua planilha geral (.xlsx). O arquivo é lido aqui no seu navegador; só os dados dos produtos são salvos na sua conta.</p>
+  <input type="file" id="impFile" accept=".xlsx,.xlsm,.xls">
+  <div id="impResumo" style="margin-top:12px"></div>
+  <p id="impMsg" class="mut"></p>
+  <menu><button id="impCancel">Fechar</button><button class="pri" id="impOk" disabled>Importar</button></menu>
+</dialog>
+
 <dialog id="dlgPat">
   <h3 style="margin-top:0">Botão "Atualizar agora"</h3>
   <p>Cole um token do GitHub (fine-grained) com permissão <b>Actions: Read and write</b> somente neste repositório. Ele fica salvo apenas neste navegador.</p>
@@ -215,6 +249,7 @@ code{background:var(--gr-bg);padding:1px 6px;border-radius:6px}
 
 <script type="module">
 import { firebaseConfig, DONO_EMAIL, GITHUB } from "./firebase-config.js";
+import { iniciarProdutos } from "./produtos-ui.js";
 
 const $ = s => document.querySelector(s);
 const DEMO = new URLSearchParams(location.search).has("demo");
@@ -358,6 +393,7 @@ function irPara(p) {
   $("#pgInicio").classList.toggle("hidden", p !== "inicio");
   $("#pgDicas").classList.toggle("hidden", p !== "dicas");
   $("#pgAnuncios").classList.toggle("hidden", p !== "anuncios");
+  $("#pgProdutos").classList.toggle("hidden", p !== "produtos");
   document.querySelectorAll(".nav button").forEach(b => b.classList.toggle("on", b.dataset.page === p));
   window.scrollTo({ top: 0 });
 }
@@ -506,6 +542,8 @@ async function iniciarDemo() {
   const j = await (await fetch("demo/dados.json")).json();
   dados = j.dashboard; dados.atualizadoEm = Date.now() - 12 * 60000; statusDoc = { estado: "ok" };
   anunciosDoc = j.anuncios || null; renderAnuncios();
+  const P = iniciarProdutos({ F: null, db: null, demo: true });
+  P.setProdutos(j.produtos || []); P.setAnuncios(anunciosDoc); P.setTarifas(j.tarifasml || null);
   mostrarApp(); renderTopo(); render();
 }
 
@@ -517,6 +555,7 @@ async function iniciarFirebase() {
   ]);
   const app = initializeApp(firebaseConfig), auth = A.getAuth(app), db = F.getFirestore(app);
   const provider = new A.GoogleAuthProvider();
+  const P = iniciarProdutos({ F, db, demo: false });
   let unsubs = [];
 
   $("#btnLogin").onclick = async () => {
@@ -542,7 +581,11 @@ async function iniciarFirebase() {
       dados = s.exists() ? s.data() : null;
       if (dados) { renderTopo(); render(); buscar($("#busca").value); } else $("#atual").textContent = "Sem dados ainda — clique em Atualizar agora.";
     }, err => { $("#avisos").innerHTML = `<div class="aviso red">Erro ao ler dados: ${esc(err.code || err.message)}</div>`; }));
-    unsubs.push(F.onSnapshot(F.doc(db, "dashboard", "anuncios"), s => { anunciosDoc = s.exists() ? s.data() : null; renderAnuncios(); }, () => {}));
+    unsubs.push(F.onSnapshot(F.doc(db, "dashboard", "anuncios"), s => { anunciosDoc = s.exists() ? s.data() : null; renderAnuncios(); P.setAnuncios(anunciosDoc); }, () => {}));
+    unsubs.push(F.onSnapshot(F.doc(db, "dashboard", "tarifasml"), s => P.setTarifas(s.exists() ? s.data() : null), () => {}));
+    unsubs.push(F.onSnapshot(F.collection(db, "produtos"), s => P.setProdutos(s.docs.map(d => ({ id: d.id, ...d.data() }))),
+      err => { $("#produtos").innerHTML = `<div class="aviso red">Não consegui ler os produtos: ${esc(err.code || err.message)}. Confira se as regras do Firestore foram publicadas.</div>`; }));
+    unsubs.push(F.onSnapshot(F.doc(db, "config", "geral"), s => P.setConfig(s.exists() ? s.data() : {}), () => {}));
     unsubs.push(F.onSnapshot(F.doc(db, "control", "status"), s => { statusDoc = s.exists() ? s.data() : null; if (dados) renderTopo(); }));
   });
 }
