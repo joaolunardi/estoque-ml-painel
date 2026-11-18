@@ -9,14 +9,35 @@ const LIMITE = 150;
 const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : 0; };
 
 export function iniciarProdutos({ F, db, demo }) {
-  let produtos = new Map(), cfg = { imposto: 0.05, margemAlvo: 0.10, freteGratisMin: 79 };
+  let produtos = new Map(), cfg = { imposto: 0.05, margemAlvo: 0.10 };
   let anuncios = [], tarifas = {}, mlPorSku = new Map();
   const filtro = { plat: "todas", busca: "", margem: "todas", ordem: "margem", limite: LIMITE };
   let pendente = null;   // arquivo lido, aguardando confirmação de importação
 
+  // Produtos do ML importados antes: o "custo de venda" era o envio. Passa para o campo de frete (uma vez).
+  const migrados = new Set();
+  function migrar(lista) {
+    const lote = [];
+    for (const p of lista) {
+      if (p.plat !== "ml" || p.envioMigrado) continue;
+      p.frete = Math.round(((p.frete || 0) + (p.fixo || 0)) * 100) / 100; p.fixo = 0; p.envioMigrado = true;
+      if (!migrados.has(p.id)) { migrados.add(p.id); lote.push(p); }
+    }
+    if (lote.length && !demo) (async () => {
+      try {
+        for (let i = 0; i < lote.length; i += 400) {
+          const b = F.writeBatch(db);
+          lote.slice(i, i + 400).forEach(p => b.update(F.doc(db, "produtos", p.id), { frete: p.frete, fixo: 0, envioMigrado: true }));
+          await b.commit();
+        }
+      } catch (e) { console.warn("migração de envio falhou", e); }
+    })();
+    return lista;
+  }
+
   // ── dados de fora ──────────────────────────────────────────────────────
   const api = {
-    setProdutos(lista) { produtos = new Map(lista.map(p => [p.id, p])); render(); },
+    setProdutos(lista) { produtos = new Map(migrar(lista).map(p => [p.id, p])); render(); },
     setConfig(c) { cfg = { ...cfg, ...(c || {}) }; syncCfg(); render(); },
     setAnuncios(doc) {
       anuncios = doc?.anuncios || [];
@@ -31,15 +52,13 @@ export function iniciarProdutos({ F, db, demo }) {
   // ── cálculo de um produto (usa tarifa real do ML quando existe) ────────
   function efetivo(p) {
     const e = { ...p, fonte: "planilha" };
-    // Mercado Livre: a tarifa fixa só existe abaixo do limite do frete grátis; acima dele só há frete
-    if (p.plat === "ml" && !p.manualFixo && num(p.preco) >= cfg.freteGratisMin) e.fixo = 0;
+    if (p.plat === "ml") e.fixo = 0;   // no ML não há tarifa fixa: só comissão e envio
     if (p.plat === "ml" && !p.manualTarifa) {
       const a = mlPorSku.get(String(p.sku).trim().toUpperCase());
       const t = a && tarifas[a.id];
       if (t) {
         if (t.comissao != null) e.comissao = t.comissao;
-        // frete: o vendedor só paga o frete quando ele é grátis (a partir de R$ 79 no ML)
-        if (t.freteCusto != null && !p.manualFrete) e.frete = num(p.preco) >= cfg.freteGratisMin ? t.freteCusto : 0;
+        if (t.freteCusto != null && !p.manualFrete) e.frete = t.freteCusto;   // custo de envio real do vendedor
         e.fonte = "ml";
       }
     }
@@ -74,11 +93,11 @@ export function iniciarProdutos({ F, db, demo }) {
     const alvo = precoParaMargem(e, cfg.margemAlvo, cfg.imposto);
     const cl = classe(c.margem);
     return `<tr data-id="${esc(p.id)}">
-      <td class="prod"><b>${esc(p.nome || p.sku)}</b><small>${esc(p.sku)}${p.marca ? " · " + esc(p.marca) : ""} · ${PLATAFORMAS[p.plat]}${e.fonte === "ml" ? ' · <span class="tag-ml" title="Comissão e frete vindos do próprio Mercado Livre">tarifa real ML</span>' : ""}</small></td>
+      <td class="prod"><b>${esc(p.nome || p.sku)}</b><small>${esc(p.sku)}${p.marca ? " · " + esc(p.marca) : ""} · ${PLATAFORMAS[p.plat]}${e.fonte === "ml" ? ' · <span class="tag-ml" title="Comissão e custo de envio vindos do próprio Mercado Livre">comissão e envio reais ML</span>' : ""}</small></td>
       <td class="n">${inp("preco", p.preco, { w: 92 })}${a ? `<small class="${dif ? "difml" : "mut"}">no ML: ${brl(a.preco)}${a.link ? ` <a href="${esc(a.link)}" target="_blank" rel="noopener">↗</a>` : ""}</small>` : ""}</td>
       <td class="n">${inp("custo", p.custo, { w: 88 })}</td>
       <td class="n">${inp("comissao", e.comissao, { pctMode: true, w: 66 })}</td>
-      <td class="n">${inp("fixo", e.fixo, { w: 72 })}</td>
+      <td class="n">${p.plat === "ml" ? '<span class="zero" title="O Mercado Livre não cobra tarifa fixa: só comissão e envio">—</span>' : inp("fixo", e.fixo, { w: 72 })}</td>
       <td class="n">${inp("frete", e.frete, { w: 72 })}</td>
       <td class="n">${p.plat === "tiktok" || p.plat === "amazon" ? inp("afiliado", p.afiliado, { pctMode: true, w: 62 }) : '<span class="zero">—</span>'}</td>
       <td class="n r-imp">${brl(c.impostoR)}</td>
@@ -109,7 +128,6 @@ export function iniciarProdutos({ F, db, demo }) {
         <div class="seg">${plats.map(pl => `<button class="${filtro.plat === pl ? "on" : ""}" data-pl="${pl}">${pl === "todas" ? "Todas" : PLATAFORMAS[pl]} <span class="mut">${nPlat(pl)}</span></button>`).join("")}</div>
         <div class="pd-cfg">
           <label>Imposto <input id="cfgImposto" type="number" step="0.1" min="0" value="${(cfg.imposto * 100).toFixed(1)}"> %</label>
-          <label title="No ML, a partir deste preço não há tarifa fixa e o frete fica por conta do vendedor">Frete grátis a partir de R$ <input id="cfgFrete" type="number" step="1" min="0" value="${cfg.freteGratisMin}"></label>
           <label>Margem alvo <input id="cfgAlvo" type="number" step="0.5" min="0" value="${(cfg.margemAlvo * 100).toFixed(1)}"> %</label>
         </div>
       </div>
@@ -126,7 +144,7 @@ export function iniciarProdutos({ F, db, demo }) {
           <button id="pdCsv">Exportar CSV</button><button id="pdImportar">Importar planilha</button>
         </div>
       </div>
-      <div class="tw"><table class="pd"><thead><tr><th>Produto</th><th class="n">Preço de venda</th><th class="n">Custo</th><th class="n">Comissão</th><th class="n" title="No ML só existe abaixo do limite do frete grátis">Tarifa fixa / embal.</th><th class="n">Frete</th><th class="n">Afiliado</th><th class="n">Imposto</th><th class="n">Lucro</th><th class="n">Margem</th><th class="n" title="Preço necessário para atingir a margem alvo">Preço p/ margem alvo</th></tr></thead>
+      <div class="tw"><table class="pd"><thead><tr><th>Produto</th><th class="n">Preço de venda</th><th class="n">Custo</th><th class="n">Comissão</th><th class="n" title="Shopee, TikTok e Amazon. No ML não há tarifa fixa">Tarifa fixa</th><th class="n" title="No ML: custo de envio que o vendedor paga (aparece como Envios no extrato)">Frete / envio</th><th class="n">Afiliado</th><th class="n">Imposto</th><th class="n">Lucro</th><th class="n">Margem</th><th class="n" title="Preço necessário para atingir a margem alvo">Preço p/ margem alvo</th></tr></thead>
       <tbody>${L.slice(0, filtro.limite).map(linha).join("") || `<tr><td colspan="11" class="empty">Nenhum produto com esses filtros.</td></tr>`}</tbody></table></div>
       ${L.length > filtro.limite ? `<p class="ins-nota"><button id="pdMais">Mostrar mais ${Math.min(LIMITE, L.length - filtro.limite)}</button> Mostrando ${filtro.limite} de ${L.length}.</p>` : `<p class="ins-nota">${L.length} produtos.</p>`}
       <p class="ins-nota">Edite o preço (ou custo, comissão, frete) e a margem se recalcula na hora. Alterar aqui <b>não muda o preço no Mercado Livre</b>: serve para simular e decidir. Margem = lucro ÷ preço de venda, depois de custo, comissão, tarifa fixa, frete e imposto.</p>`;
@@ -140,10 +158,7 @@ export function iniciarProdutos({ F, db, demo }) {
     const v = {};
     tr.querySelectorAll("input.ed").forEach(i => { const n = parseFloat(i.value); v[i.dataset.c] = (Number.isFinite(n) ? n : 0) / (i.dataset.pct ? 100 : 1); });
     const e = efetivo({ ...p, preco: v.preco });
-    const fr = tr.querySelector('input[data-c="frete"]');
-    if (e.fonte === "ml" && !p.manualFrete && fr && !fr.dataset.touched) { fr.value = e.frete; v.frete = e.frete; }   // cruzou a faixa do frete grátis
-    const fx = tr.querySelector('input[data-c="fixo"]');
-    if (p.plat === "ml" && !p.manualFixo && fx && !fx.dataset.touched) { fx.value = e.fixo; v.fixo = e.fixo; }
+    if (p.plat === "ml") v.fixo = 0;
     const x = { ...e, ...v };
     const c = calcMargem(x, cfg.imposto), alvo = precoParaMargem(x, cfg.margemAlvo, cfg.imposto);
     tr.querySelector(".r-imp").textContent = brl(c.impostoR);
@@ -158,7 +173,6 @@ export function iniciarProdutos({ F, db, demo }) {
     const n = parseFloat(input.value); const val = (Number.isFinite(n) ? n : 0) / (input.dataset.pct ? 100 : 1);
     const upd = { [campo]: Math.round(val * 10000) / 10000 };
     if (p.plat === "ml" && campo === "comissao") upd.manualTarifa = true;
-    if (p.plat === "ml" && campo === "fixo") upd.manualFixo = true;
     if (p.plat === "ml" && campo === "frete") upd.manualFrete = true;
     Object.assign(p, upd);
     if (demo) return;
@@ -230,14 +244,12 @@ export function iniciarProdutos({ F, db, demo }) {
   // ── eventos (delegação, registrados uma vez) ───────────────────────────
   document.addEventListener("input", e => {
     const i = e.target; if (!i.classList?.contains("ed")) return;
-    if (i.dataset.c === "frete" || i.dataset.c === "fixo") i.dataset.touched = "1";
     recalcLinha(i.closest("tr"));
   });
   document.addEventListener("change", e => {
     const i = e.target;
     if (i.classList?.contains("ed")) { salvarCampo(i.closest("tr"), i); return; }
     if (i.id === "cfgImposto") { cfg.imposto = Math.max(0, parseFloat(i.value) || 0) / 100; salvarCfg(); render(); }
-    else if (i.id === "cfgFrete") { cfg.freteGratisMin = Math.max(0, parseFloat(i.value) || 0); salvarCfg(); render(); }
     else if (i.id === "cfgAlvo") { cfg.margemAlvo = Math.max(0, parseFloat(i.value) || 0) / 100; salvarCfg(); render(); }
     else if (i.id === "pdOrdem") { filtro.ordem = i.value; filtro.limite = LIMITE; render(); }
     else if (i.id === "impFile" && i.files[0]) lerArquivo(i.files[0]);

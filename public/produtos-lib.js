@@ -62,8 +62,12 @@ export function lerPlanilha(XLSX, wb) {
         nome: L.nome ? txt(cel(r, L.nome)) : "",
         marca: L.marca ? txt(cel(r, L.marca)) : "",
         preco: r2(preco), custo: r2(num(cel(r, L.custo))),
-        comissao: num(cel(r, L.comissao)), fixo: r2(num(cel(r, L.fixo))),
-        frete: r2(num(cel(r, L.frete))), afiliado: L.afiliado ? num(cel(r, L.afiliado)) : 0,
+        comissao: num(cel(r, L.comissao)),
+        // no ML a coluna "Custo de Venda" da planilha é o custo de envio (aparece como "Envios" no extrato)
+        fixo: plat === "ml" ? 0 : r2(num(cel(r, L.fixo))),
+        frete: plat === "ml" ? r2(num(cel(r, L.fixo)) + num(cel(r, L.frete))) : r2(num(cel(r, L.frete))),
+        afiliado: L.afiliado ? num(cel(r, L.afiliado)) : 0,
+        ...(plat === "ml" ? { envioMigrado: true } : {}),
       });
       resumo[plat]++;
     }
