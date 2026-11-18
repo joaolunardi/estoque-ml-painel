@@ -41,6 +41,8 @@ def buscar_anuncios_ativos(headers, user_id):
                 "id": p["id"], "titulo": p.get("title", ""), "sku": str(sku).strip(),
                 "preco": p.get("price"), "precoDe": p.get("original_price"),
                 "full": p.get("shipping", {}).get("logistic_type") == "fulfillment",
+                "categoria": p.get("category_id"), "tipo": p.get("listing_type_id"),
+                "freteGratis": bool(p.get("shipping", {}).get("free_shipping")),
                 "link": p.get("permalink", ""),
                 "imagem": fotos[0].get("url", "") if fotos else (p.get("thumbnail") or ""),
             }
@@ -135,6 +137,54 @@ def avaliar(anuncios, fins, estado, agora, aviso_dias):
     return linhas, novo, resumo
 
 
+def tarifa_do_anuncio(headers, user_id, a):
+    """Tarifas reais do ML para um anúncio: comissão (fração) e custo de frete do vendedor
+    (quanto ele paga SE o frete for grátis). Devolve None se o ML não responder."""
+    comissao = frete = None
+    try:
+        r = ml_get(f"{API}/sites/MLB/listing_prices?price={a['preco']}&listing_type_id={a.get('tipo')}"
+                   f"&category_id={a.get('categoria')}", headers)
+        det = (r[0] if isinstance(r, list) and r else r).get("sale_fee_details") if r else None
+        if det and det.get("percentage_fee") is not None:
+            comissao = round(det["percentage_fee"] / 100, 4)
+    except Exception:
+        pass
+    try:
+        r = ml_get(f"{API}/users/{user_id}/shipping_options/free?item_id={a['id']}&zip_code=01310100", headers)
+        c = ((r or {}).get("coverage") or {}).get("all_country") or {}
+        if c.get("list_cost") is not None:
+            frete = round(float(c["list_cost"]), 2)
+    except Exception:
+        pass
+    if comissao is None and frete is None:
+        return None
+    return {"comissao": comissao, "freteCusto": frete, "freteGratis": a.get("freteGratis", False)}
+
+
+def atualizar_tarifas(db, firestore, headers, user_id, anuncios, horas=6):
+    """Grava dashboard/tarifasml (no máximo a cada `horas` horas — são ~2 chamadas por anúncio)."""
+    ref = db.collection("dashboard").document("tarifasml")
+    snap = ref.get()
+    if snap.exists:
+        ts = (snap.to_dict() or {}).get("atualizadoEm")
+        if ts and (datetime.now(timezone.utc) - ts).total_seconds() < horas * 3600:
+            log("Tarifas do ML ainda recentes — pulando")
+            return
+    itens, falhas = {}, 0
+    for a in anuncios.values():
+        if not a.get("preco") or not a.get("categoria"):
+            continue
+        t = tarifa_do_anuncio(headers, user_id, a)
+        if t:
+            itens[a["id"]] = t
+        else:
+            falhas += 1
+    if not itens:
+        raise RuntimeError("Nenhuma tarifa devolvida pelo Mercado Livre")
+    ref.set({"itens": itens, "atualizadoEm": firestore.SERVER_TIMESTAMP})
+    log(f"Tarifas do ML: {len(itens)} anúncios ({falhas} sem resposta)")
+
+
 def executar_anuncios(db, firestore, headers, user_id, cfg):
     """Lê anúncios, atualiza memória de promoção e publica dashboard/anuncios."""
     agora = datetime.now(timezone.utc)
@@ -152,4 +202,8 @@ def executar_anuncios(db, firestore, headers, user_id, cfg):
         {"anuncios": linhas, "resumo": resumo, "atualizadoEm": firestore.SERVER_TIMESTAMP})
     log(f"Anúncios: {resumo['perdeu']} perderam promoção · {resumo['acabando']} acabando · "
         f"{resumo['ok']} ok · {resumo['sem']} sem promoção (nunca vista)")
+    try:
+        atualizar_tarifas(db, firestore, headers, user_id, anuncios)
+    except Exception as e:
+        log(f"⚠️ Tarifas do ML falharam: {e}")
     return resumo
