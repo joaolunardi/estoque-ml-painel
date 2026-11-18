@@ -8,6 +8,9 @@ service cloud.firestore {
     }
     match /dashboard/{doc} { allow read: if dono(); allow write: if false; }
     match /control/{doc}   { allow read: if dono(); allow write: if false; }
+    // produtos e configurações: só o dono lê e grava
+    match /produtos/{doc} { allow read, write: if dono(); }
+    match /config/{doc}   { allow read, write: if dono(); }
     // secrets/* e todo o resto: negado (o job usa conta de serviço, que ignora as regras)
     match /{document=**} { allow read, write: if false; }
   }
